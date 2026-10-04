@@ -103,6 +103,7 @@ import SwiftUI
 /// ``MarkupParser`` implementation.
 public struct StructuredText: View {
   @State private var attributedString = AttributedString()
+  @State private var parsedMarkup: String?
 
   private let markup: String
   private let parser: any MarkupParser
@@ -116,21 +117,24 @@ public struct StructuredText: View {
   }
 
   public var body: some View {
-    WithAttachments(attributedString) {
+    // Selection needs parsed content on the first render, including after delayed insertion.
+    let renderedString =
+      parsedMarkup == markup
+      ? attributedString
+      : (try? parser.attributedString(for: markup)) ?? .init()
+
+    return WithAttachments(renderedString) {
       BlockContent(content: $0)
         .modifier(TextSelectionInteraction())
         .modifier(TextSelectionCoordination())
     }
     .coordinateSpace(.textContainer)
     .onChange(of: markup, initial: true) {
-      markupDidChange(markup)
+      attributedString = renderedString
+      parsedMarkup = markup
     }
     // Disable line limit to avoid per-fragment truncation
     .lineLimit(nil)
-  }
-
-  private func markupDidChange(_ markup: String) {
-    self.attributedString = (try? parser.attributedString(for: markup)) ?? .init()
   }
 }
 
