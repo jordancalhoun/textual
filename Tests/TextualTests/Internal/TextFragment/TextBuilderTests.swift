@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) || os(iOS)
   import SwiftUI
   import Testing
 
@@ -15,7 +15,27 @@
       )
       renderer.proposedSize = .init(width: 320, height: 4_000)
 
-      #expect(renderer.nsImage != nil)
+      #if os(macOS)
+        #expect(renderer.nsImage != nil)
+      #else
+        #expect(renderer.uiImage != nil)
+      #endif
+    }
+
+    @Test func renderingHighlightedCodeSizedRunsDoesNotOverflowStack() {
+      let renderer = ImageRenderer(
+        content: TextFragment(Self.attributedStringWithManyRuns(count: 40_000))
+          .frame(width: 320)
+          .fixedSize(horizontal: false, vertical: true)
+          .coordinateSpace(.textContainer)
+      )
+      renderer.proposedSize = .init(width: 320, height: 4_000)
+
+      #if os(macOS)
+        #expect(renderer.nsImage != nil)
+      #else
+        #expect(renderer.uiImage != nil)
+      #endif
     }
 
     private static func attributedStringWithManyRuns(count: Int) -> AttributedString {
