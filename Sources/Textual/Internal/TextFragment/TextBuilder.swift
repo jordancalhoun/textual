@@ -64,17 +64,36 @@ extension Text {
     attachmentSizes: [AttachmentKey: CGSize],
     in environment: TextEnvironmentValues
   ) {
-    let textValues = attributedString.runs.map { run in
-      var text: Text
+    var textValues: [Text] = []
+    // Adjacent runs without an attachment or link share one Text, so highlighted
+    // code doesn't produce one Text per token.
+    var plainRange: Range<AttributedString.Index>?
 
+    func flushPlainRange() {
+      if let range = plainRange {
+        textValues.append(Text(AttributedString(attributedString[range])))
+        plainRange = nil
+      }
+    }
+
+    for run in attributedString.runs {
       var runEnvironment = environment
       runEnvironment.font = run.font ?? environment.font
 
       let key = run.textual.attachment.map {
         AttachmentKey(attachment: $0, font: runEnvironment.font)
       }
+      let size = key.flatMap { attachmentSizes[$0] }
 
-      if let key, let size = attachmentSizes[key] {
+      if size == nil, run.link == nil {
+        plainRange = (plainRange?.lowerBound ?? run.range.lowerBound)..<run.range.upperBound
+        continue
+      }
+      flushPlainRange()
+
+      var text: Text
+
+      if let key, let size {
         // Create placeholder
         text = Text(placeholderSize: size)
           .baselineOffset(key.attachment.baselineOffset(in: runEnvironment))
@@ -93,11 +112,26 @@ extension Text {
         text = text.customAttribute(LinkAttribute(link))
       }
 
-      return text
+      textValues.append(text)
     }
+    flushPlainRange()
 
-    self = textValues.reduce(Text(verbatim: "")) { partialResult, text in
-      partialResult + text
+    self = Text(concatenating: textValues[...])
+  }
+
+  // SwiftUI resolves concatenated Text recursively, so a left fold over thousands
+  // of runs overflows the main thread stack. A balanced tree keeps depth at log2(n).
+  private init(concatenating texts: ArraySlice<Text>) {
+    switch texts.count {
+    case 0:
+      self.init(verbatim: "")
+    case 1:
+      self = texts[texts.startIndex]
+    default:
+      let middle = texts.startIndex + texts.count / 2
+      self =
+        Text(concatenating: texts[..<middle])
+        + Text(concatenating: texts[middle...])
     }
   }
 
